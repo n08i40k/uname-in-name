@@ -26,4 +26,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "exteraGram Plugin Template"
+rootProject.name = "Username in Name"

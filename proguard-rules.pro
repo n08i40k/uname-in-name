@@ -1,4 +1,4 @@
--keep class ru.n08i40k.template.** {
+-keep class ru.n08i40k.uname_in_name.** {
     *;
 }
 

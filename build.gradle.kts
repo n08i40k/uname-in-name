@@ -40,14 +40,14 @@ private val TELEGRAM_COMPILE_PACKAGE_PREFIXES =
         "j$/"
     )
 
-private val SHADED_PACKAGE = "ru/n08i40k/template_shaded"
+private val SHADED_PACKAGE = "ru/n08i40k/uname_in_name_shaded"
 
 // Packages that must NOT be relocated — provided by the host app or Android runtime.
 // compileOnly-only dependencies must also be listed here (their classes are resolved
 // from the host classloader at runtime, so references to them must stay unrelocated).
 private val RELOCATION_EXCLUDED_PREFIXES: List<String> by lazy {
     TELEGRAM_COMPILE_PACKAGE_PREFIXES + listOf(
-        "ru/n08i40k/template/",
+        "ru/n08i40k/uname_in_name/",
         "android/",
         "dalvik/",
         "javax/",
@@ -203,7 +203,7 @@ plugins {
 }
 
 i18n4k {
-    packageName = "ru.n08i40k.template.i18n"
+    packageName = "ru.n08i40k.uname_in_name.i18n"
     sourceCodeLocales = listOf("en", "ru")
 }
 
@@ -227,7 +227,7 @@ configure<DecoroutinatorPluginExtension> {
 }
 
 android {
-    namespace = "ru.n08i40k.template"
+    namespace = "ru.n08i40k.uname_in_name"
 
     buildFeatures {
         buildConfig = true
@@ -358,9 +358,9 @@ fun registerBuildDexTask(variant: String) {
                 runtimeJars.filterNot { jarPath -> File(jarPath).artifactKey() in embeddedModules }
 
             // Merge all inputs into a single JAR with package relocation applied.
-            // Plugin's own classes (ru.n08i40k.template.**) keep their names but get their
+            // Plugin's own classes (ru.n08i40k.uname_in_name.**) keep their names but get their
             // bytecode references updated to point to the relocated library classes.
-            // Library JARs are moved to ru.n08i40k.template_shaded.* to avoid host conflicts.
+            // Library JARs are moved to ru.n08i40k.uname_in_name_shaded.* to avoid host conflicts.
             val mergedShadedJar =
                 buildDirFile.resolve("intermediates/merged-shaded/$variant/classes.jar")
             mergedShadedJar.parentFile.mkdirs()
