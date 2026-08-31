@@ -1,6 +1,6 @@
 [project]
 name = "uname-in-name"
-version = "0.1.0"
+version = "1.0.0"
 description = "extera/Ayu-Gram plugin that renders usernames inside user names"
 license = "MIT"
 license-files = ["LICENSE"]
