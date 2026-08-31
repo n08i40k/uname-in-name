@@ -17,9 +17,8 @@ from java.lang import Class, String
 from java.nio import ByteBuffer
 from org.telegram.messenger import ApplicationLoader, LocaleController
 from org.telegram.ui.ActionBar import AlertDialog
-from org.telegram.ui.Components import UItem
 from ui.bulletin import BulletinHelper
-from ui.settings import Custom, EditText, Header  # ty:ignore[unresolved-import]
+from ui.settings import Divider, EditText, Header
 
 __id__ = "uname-in-name"
 __name__ = "UserName-In-Name"
@@ -205,8 +204,6 @@ class SettingsActions:
 
     def build_settings(self) -> list[Any]:
         try:
-            desc = UItem.asShadow(String(self.plugin._t("settings.template.desc")))
-
             return [
                 Header(text=self.plugin._t("settings.template.title")),
                 EditText(
@@ -215,7 +212,7 @@ class SettingsActions:
                     default=_detached(DEFAULT_TEMPLATE),
                     on_change=self._on_template_change,
                 ),
-                Custom(item=desc),
+                Divider(text=self.plugin._t("settings.template.desc")),
             ]
         except Exception as e:
             self.plugin.log_exception("Failed to build settings items", e)
