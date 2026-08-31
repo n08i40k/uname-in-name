@@ -63,17 +63,6 @@ public class FixTelegramJar {
     // Sourced from `gradle :dependencies --configuration debugCompileClasspath`.
     static final String[] EXCLUDED_PREFIXES = {
         "kotlin/",
-        "kotlinx/coroutines/",
-        "androidx/annotation/",
-        "androidx/arch/",
-        "androidx/collection/",
-        "androidx/core/",
-        "androidx/customview/",
-        "androidx/lifecycle/",
-        "androidx/recyclerview/",
-        "androidx/room/",
-        "androidx/sqlite/",
-        "androidx/versionedparcelable/",
         "com/android/tools/r8/",
     };
 

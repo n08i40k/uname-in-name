@@ -25,10 +25,6 @@ _require +COMMANDS:
 dex: (_require "java")
     ./gradlew buildDexDebug
 
-# generate i18n files (use added lines without full dex rebuild)
-loc: (_require "java")
-    ./gradlew generateI18n4kFiles
-
 # embed a DEX (default: release) into a distributable copy of the plugin .py
 embed DEX_PATH=RELEASE_DEX_PATH OUTPUT=DIST_PY SOURCE=PLUGIN_PY: (_require "uv")
     #!/usr/bin/env bash

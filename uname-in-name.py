@@ -1,55 +1,57 @@
 # fmt: off
-from android.webkit import ValueCallback
-from java import dynamic_proxy
-from org.telegram.ui.ActionBar import AlertDialog
-from client_utils import get_last_fragment
-from ui.bulletin import BulletinHelper
-from android_utils import run_on_ui_thread, copy_to_clipboard
-import traceback
-from android.util import Log
-import threading
-from ui.settings import Header, Text
-from base_plugin import MenuItemType, MenuItemData, BasePlugin
-from org.telegram.messenger import ApplicationLoader, LocaleController
-from java.nio import ByteBuffer
-from dalvik.system import InMemoryDexClassLoader
-import os
 import base64
 import lzma
-from java.lang import Class, String, Long
-from typing import Optional, Any, cast
+import os
+import threading
+import traceback
+from typing import Any, Optional, cast
+
+from android.util import Log
+from android.webkit import ValueCallback
+from android_utils import copy_to_clipboard, run_on_ui_thread
+from base_plugin import BasePlugin
+from client_utils import get_last_fragment
+from dalvik.system import InMemoryDexClassLoader
+from java import dynamic_proxy
+from java.lang import Class, String
+from java.nio import ByteBuffer
+from org.telegram.messenger import ApplicationLoader, LocaleController
+from org.telegram.ui.ActionBar import AlertDialog
+from org.telegram.ui.Components import UItem
+from ui.bulletin import BulletinHelper
+from ui.settings import Custom, EditText, Header  # ty:ignore[unresolved-import]
 
 __id__ = "uname-in-name"
-__name__ = "Username in Name"
-__description__ = "Шаблон плагина exteraGram с DEX, встроенным прямо в исходник"
+__name__ = "UserName-In-Name"
+__description__ = "Отображение юзернейма в имени пользователя по заданному шаблону"
 __author__ = "@n08i40k_extera"
-__version__ = "0.0.0"
+__icon__ = "LedScreenEmoji/47"
+__version__ = "1.0.0"
 __min_version__ = "12.1.1"
 
 LOGCAT_TAG = __id__
 
 JVM_PLUGIN_CLASS = "ru.n08i40k.uname_in_name.Plugin"
 
+TEMPLATE_KEY = "uname-in-name.template"
+DEFAULT_TEMPLATE = "{o} | @{u}"
+
 DEX_COMMENT_BEGIN = "# === EMDEDDED DEX BEGIN ==="
 DEX_COMMENT_END = "# === EMDEDDED DEX END ==="
 
 
 I18N_SETTINGS: dict[str, dict[str, str]] = {
-    "settings.example.title": {
-        "en": "Example button in plugin settings",
-        "ru": "Пример кнопки в меню настроек плагина",
+    "settings.template.title": {
+        "en": "Formatting template",
+        "ru": "Шаблон форматирования",
     },
-}
-
-I18N_MENU: dict[str, dict[str, str]] = {
-    "menu.chat.example.title": {
-        "en": "Example action",
-        "ru": "Пример действия",
+    "settings.template.hint": {
+        "en": "{o} | @{u}",
     },
-    "menu.chat.example.description": {
-        "en": "Example button in chat context menu",
-        "ru": "Пример кнопки в контекстном меню чата",
-    },
+    "settings.template.desc": {
+        "en": "You can write any template, and it will be used when a user name is displayed.\n\n{o} - The original user name.\n{u} - The username, if present.\n\nThe template is applied only to users that have a username.\nOtherwise the user name is displayed as usual.",
+        "ru": "Вы можете написать любой шаблон, который будет использоваться при отображении имени пользователя.\n\n{o} - Оригинальное имя пользователя.\n{u} - Юзернейм, если присутствует.\n\nШаблон применяется только если у пользователя есть юзернейм.\nВ противном случае имя пользователя будет отображаться как обычно.",
+    }
 }
 
 I18N_DIALOG: dict[str, dict[str, str]] = {
@@ -68,10 +70,6 @@ I18N_DIALOG: dict[str, dict[str, str]] = {
 }
 
 I18N_STATUS: dict[str, dict[str, str]] = {
-    "status.error.chat.detect_current_failed": {
-        "en": "Failed to detect the current chat",
-        "ru": "Не удалось определить текущий чат",
-    },
     "status.error.dex.missing": {
         "en": "Plugin engine is missing from the source file",
         "ru": "Движок плагина отсутствует в файле плагина",
@@ -80,7 +78,6 @@ I18N_STATUS: dict[str, dict[str, str]] = {
 
 I18N_STRINGS: dict[str, dict[str, str]] = {
     **I18N_SETTINGS,
-    **I18N_MENU,
     **I18N_DIALOG,
     **I18N_STATUS,
 }
@@ -88,18 +85,16 @@ I18N_STRINGS: dict[str, dict[str, str]] = {
 # fmt: on
 
 
-def _as_dialog_id(value: Any) -> Optional[int]:
-    try:
-        return int(value) or None
-    except Exception:
-        return None
+def _detached(text: str) -> str:
+    """Copy of `text` that shares no object with the rest of the module.
 
-
-def _dialog_id_of(obj: Any) -> Optional[int]:
-    try:
-        return _as_dialog_id(obj.getDialogId())
-    except Exception:
-        return None
+    exteraGram reads every field of a settings item as a PyObject and closes it
+    right after reading, while equal string constants of one module are a single
+    Python object. Two fields holding the same text would make the second read
+    hit an already closed object, and the whole settings list of the plugin is
+    then dropped with `ValueError: PyObject is closed`.
+    """
+    return "".join(iter(text))
 
 
 class JvmPluginBridge:
@@ -107,7 +102,7 @@ class JvmPluginBridge:
 
     klass: Optional[Class]
 
-    def __init__(self, plugin: "TemplatePlugin"):
+    def __init__(self, plugin: "Plugin"):
         self.plugin = plugin
         self.klass = None
 
@@ -202,142 +197,39 @@ class JvmPluginBridge:
         return bytes(payload)
 
 
-class ChatContextMenu:
-    """Chat context menu items. Keys must match ChatContextMenuButton on the DEX side."""
-
-    EXAMPLE = "example"
-
-    MENU_ITEMS: tuple[dict[str, Any], ...] = (
-        {
-            "key": EXAMPLE,
-            "text_key": "menu.chat.example.title",
-            "subtext_key": "menu.chat.example.description",
-            "icon": "msg_settings",
-            "priority": 1000,
-        },
-    )
-
-    # the payload extera hands to on_click is either the chat fragment itself or
-    # a mapping that carries the dialog id (or the fragment) under one of these keys
-    PAYLOAD_DIALOG_KEYS = ("dialog_id", "dialogId")
-    PAYLOAD_FRAGMENT_KEYS = ("chatActivity", "fragment")
-
-    def __init__(self, plugin: "TemplatePlugin"):
-        self.plugin = plugin
-        self._item_ids: dict[str, str] = {}
-
-    def register(self):
-        self.unregister()
-
-        for item in self.MENU_ITEMS:
-            key: str = item["key"]
-
-            try:
-                item_id = self.plugin.add_menu_item(
-                    MenuItemData(
-                        menu_type=MenuItemType.CHAT_ACTION_MENU,
-                        text=self.plugin._t(item["text_key"]),
-                        subtext=self.plugin._t(item["subtext_key"]),
-                        icon=item["icon"],
-                        on_click=lambda payload, button=key: self._on_click(
-                            button, payload
-                        ),
-                        priority=item["priority"],
-                    )
-                )
-
-                self._item_ids[key] = str(item_id)
-            except Exception as e:
-                self.plugin.log_exception(
-                    f"Failed to register chat context menu item {key}",
-                    e,
-                )
-
-    def unregister(self):
-        for key, item_id in tuple(self._item_ids.items()):
-            try:
-                self.plugin.remove_menu_item(item_id)
-            except Exception as e:
-                self.plugin.log_exception(
-                    f"Failed to remove chat context menu item {key}",
-                    e,
-                )
-
-        self._item_ids.clear()
-
-    def _on_click(self, key: str, payload: Any):
-        dialog_id = self._extract_dialog_id(payload)
-        if dialog_id is None:
-            self.plugin.log(
-                f"Chat context menu click payload missing dialog id for {key}: {payload}"
-            )
-            self.plugin._show_error(
-                self.plugin._t("status.error.chat.detect_current_failed")
-            )
-            return
-
-        try:
-            self.plugin.jvm_plugin.call(
-                "invokeChatContextMenuCallback",
-                String(key),
-                Long(dialog_id),
-                types=(String.getClass(), Long.TYPE),
-            )
-        except Exception as e:
-            self.plugin.log_exception(
-                f"Failed to execute chat context menu callback {key} for {dialog_id}",
-                e,
-            )
-
-    def _extract_dialog_id(self, payload: Any) -> Optional[int]:
-        getter = getattr(payload, "get", None)
-        if getter is None:
-            return _dialog_id_of(payload)
-
-        for key in self.PAYLOAD_DIALOG_KEYS:
-            if (dialog_id := _as_dialog_id(getter(key))) is not None:
-                return dialog_id
-
-        for key in self.PAYLOAD_FRAGMENT_KEYS:
-            if (dialog_id := _dialog_id_of(getter(key))) is not None:
-                return dialog_id
-
-        return _dialog_id_of(payload)
-
-
 class SettingsActions:
-    """Plugin settings items. Keys must match SettingsActionButton on the DEX side."""
+    """Builds the settings items shown in the plugin settings screen."""
 
-    EXAMPLE = "example"
-
-    def __init__(self, plugin: "TemplatePlugin"):
+    def __init__(self, plugin: "Plugin"):
         self.plugin = plugin
 
     def build_settings(self) -> list[Any]:
-        return [
-            Header(text=self.plugin._t("settings.example.title")),
-            Text(
-                text=self.plugin._t("settings.example.title"),
-                icon="msg_settings",
-                on_click=lambda _: self._on_click(self.EXAMPLE),
-            ),
-        ]
-
-    def _on_click(self, key: str):
         try:
-            self.plugin.jvm_plugin.call(
-                "invokeSettingsActionCallback",
-                String(key),
-                types=(String.getClass(),),
-            )
+            desc = UItem.asShadow(String(self.plugin._t("settings.template.desc")))
+
+            return [
+                Header(text=self.plugin._t("settings.template.title")),
+                EditText(
+                    key=TEMPLATE_KEY,
+                    hint=self.plugin._t("settings.template.hint"),
+                    default=_detached(DEFAULT_TEMPLATE),
+                    on_change=self._on_template_change,
+                ),
+                Custom(item=desc),
+            ]
         except Exception as e:
-            self.plugin.log_exception(
-                f"Failed to execute settings callback {key}",
-                e,
-            )
+            self.plugin.log_exception("Failed to build settings items", e)
+
+            raise e
+
+    def _on_template_change(self, template: str):
+        try:
+            self.plugin.push_formatting_template(template or DEFAULT_TEMPLATE)
+        except Exception as e:
+            self.plugin.log_exception("Failed to apply formatting template", e)
 
 
-class TemplatePlugin(BasePlugin):
+class Plugin(BasePlugin):
     _full_load_lock = threading.Lock()
     _eject_lock = threading.Lock()
 
@@ -347,7 +239,6 @@ class TemplatePlugin(BasePlugin):
     _ejected = False
 
     jvm_plugin: JvmPluginBridge
-    chat_context_menu: Optional[ChatContextMenu] = None
 
     def log(self, message: Any):
         text = str(message)
@@ -493,9 +384,16 @@ class TemplatePlugin(BasePlugin):
         )
         self.log("JVM plugin injected successfully")
 
-    def _register_ui(self):
-        self.chat_context_menu = ChatContextMenu(self)
-        self.chat_context_menu.register()
+    def push_formatting_template(self, template: str):
+        self.jvm_plugin.call(
+            "setFormattingTemplate",
+            String(template),
+            types=(String.getClass(),),
+        )
+
+    def _apply_formatting_template(self):
+        self.push_formatting_template(self.get_setting(TEMPLATE_KEY, DEFAULT_TEMPLATE))
+        self.log("Formatting template applied")
 
     def _finalize_jvm_plugin_inject(self):
         self.jvm_plugin.call("finalizeInject")
@@ -514,7 +412,7 @@ class TemplatePlugin(BasePlugin):
 
         for stage, action in (
             ("inject", self._inject_jvm_plugin),
-            ("register ui", self._register_ui),
+            ("applyTemplate", self._apply_formatting_template),
             ("finalizeInject", self._finalize_jvm_plugin_inject),
         ):
             try:
@@ -525,15 +423,6 @@ class TemplatePlugin(BasePlugin):
                 return
 
         self._stop_load_logging()
-
-    def _unregister_chat_context_menu(self, reason: str):
-        if self.chat_context_menu is None:
-            return
-
-        try:
-            self.chat_context_menu.unregister()
-        except Exception as e:
-            self.log_exception(f"Failed to unregister chat context menu ({reason})", e)
 
     def on_plugin_load(self):
         self._start_load_logging()
@@ -555,8 +444,6 @@ class TemplatePlugin(BasePlugin):
         if jvm_plugin is None or jvm_plugin.klass is None:
             return
 
-        self._unregister_chat_context_menu("unload")
-
         try:
             jvm_plugin.call("eject")
             self.log("JVM plugin ejected successfully")
@@ -572,8 +459,6 @@ class TemplatePlugin(BasePlugin):
             self._ejected = True
 
         self.log("JVM plugin instance lost: ejected by a concurrent reload")
-
-        self._unregister_chat_context_menu("eject")
 
         jvm_plugin = getattr(self, "jvm_plugin", None)
         if jvm_plugin is not None:
