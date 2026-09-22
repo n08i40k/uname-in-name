@@ -25,7 +25,7 @@ __name__ = "UserName-In-Name"
 __description__ = "Отображение юзернейма в имени пользователя по заданному шаблону"
 __author__ = "@n08i40k_extera"
 __icon__ = "LedScreenEmoji/47"
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __min_version__ = "12.1.1"
 
 LOGCAT_TAG = __id__
