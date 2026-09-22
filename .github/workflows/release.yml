@@ -52,12 +52,10 @@ jobs:
 
       - name: Ensure Telegram JARs exist
         run: |
-          for jar in libs/Telegram.jar libs/Telegram-compile.jar; do
-            if [[ ! -s "$jar" ]]; then
-              echo "$jar is missing. Commit the host JARs to libs/ (see 'just update-apk')." >&2
-              exit 1
-            fi
-          done
+          if [[ ! -s "libs/Telegram.jar" ]]; then
+            echo "'libs/Telegram.jar' is missing. Commit the host JAR to libs/ (see 'just update-apk')." >&2
+            exit 1
+          fi
 
       - name: Set up Java
         uses: actions/setup-java@v4
