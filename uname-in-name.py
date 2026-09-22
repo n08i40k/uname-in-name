@@ -13,12 +13,12 @@ from base_plugin import BasePlugin
 from client_utils import get_last_fragment
 from dalvik.system import InMemoryDexClassLoader
 from java import dynamic_proxy
-from java.lang import Class, String
+from java.lang import Class, String, Boolean
 from java.nio import ByteBuffer
 from org.telegram.messenger import ApplicationLoader, LocaleController
 from org.telegram.ui.ActionBar import AlertDialog
 from ui.bulletin import BulletinHelper
-from ui.settings import Divider, EditText, Header
+from ui.settings import Divider, EditText, Header, Switch
 
 __id__ = "uname-in-name"
 __name__ = "UserName-In-Name"
@@ -32,8 +32,11 @@ LOGCAT_TAG = __id__
 
 JVM_PLUGIN_CLASS = "ru.n08i40k.uname_in_name.Plugin"
 
-TEMPLATE_KEY = "uname-in-name.template"
-DEFAULT_TEMPLATE = "{o} | @{u}"
+SETTINGS_TEMPLATE_KEY = "uname-in-name.template"
+SETTINGS_COPY_ON_LONG_PRESS_KEY = "uname-in-name.copy-on-long-press"
+
+SETTINGS_DEFAULT_TEMPLATE = "{o} | @{u}"
+SETTINGS_DEFAULT_COPY_ON_LONG_PRESS = True
 
 DEX_COMMENT_BEGIN = "# === EMDEDDED DEX BEGIN ==="
 DEX_COMMENT_END = "# === EMDEDDED DEX END ==="
@@ -50,7 +53,19 @@ I18N_SETTINGS: dict[str, dict[str, str]] = {
     "settings.template.desc": {
         "en": "You can write any template, and it will be used when a user name is displayed.\n\n{o} - The original user name.\n{u} - The username, if present.\n\nThe template is applied only to users that have a username.\nOtherwise the user name is displayed as usual.",
         "ru": "Вы можете написать любой шаблон, который будет использоваться при отображении имени пользователя.\n\n{o} - Оригинальное имя пользователя.\n{u} - Юзернейм, если присутствует.\n\nШаблон применяется только если у пользователя есть юзернейм.\nВ противном случае имя пользователя будет отображаться как обычно.",
-    }
+    },
+    "settings.actions.title": {
+        "en": "Actions",
+        "ru": "Действия",
+    },
+    "settings.copy_on_long_press.text": {
+        "en": "Copy username on long press",
+        "ru": "Копировать юзернейм при длительном нажатии",
+    },
+    "settings.copy_on_long_press.desc": {
+        "en": "Copies the username to the clipboard when long-pressing the name in a message.",
+        "ru": "Копирует имя пользователя в буфер обмена при длительном нажатии на его имя в сообщении.",
+    },
 }
 
 I18N_DIALOG: dict[str, dict[str, str]] = {
@@ -207,12 +222,20 @@ class SettingsActions:
             return [
                 Header(text=self.plugin._t("settings.template.title")),
                 EditText(
-                    key=TEMPLATE_KEY,
+                    key=SETTINGS_TEMPLATE_KEY,
                     hint=self.plugin._t("settings.template.hint"),
-                    default=_detached(DEFAULT_TEMPLATE),
+                    default=_detached(SETTINGS_DEFAULT_TEMPLATE),
                     on_change=self._on_template_change,
                 ),
                 Divider(text=self.plugin._t("settings.template.desc")),
+                Header(text=self.plugin._t("settings.actions.title")),
+                Switch(
+                    key=SETTINGS_COPY_ON_LONG_PRESS_KEY,
+                    text=self.plugin._t("settings.copy_on_long_press.text"),
+                    default=SETTINGS_DEFAULT_COPY_ON_LONG_PRESS,
+                    on_change=self._on_copy_on_long_press_change,
+                ),
+                Divider(text=self.plugin._t("settings.copy_on_long_press.desc")),
             ]
         except Exception as e:
             self.plugin.log_exception("Failed to build settings items", e)
@@ -221,9 +244,15 @@ class SettingsActions:
 
     def _on_template_change(self, template: str):
         try:
-            self.plugin.push_formatting_template(template or DEFAULT_TEMPLATE)
+            self.plugin.push_formatting_template(template or SETTINGS_DEFAULT_TEMPLATE)
         except Exception as e:
             self.plugin.log_exception("Failed to apply formatting template", e)
+
+    def _on_copy_on_long_press_change(self, value: bool):
+        try:
+            self.plugin.push_copy_on_long_press(value)
+        except Exception as e:
+            self.plugin.log_exception("Failed to apply copy on long press", e)
 
 
 class Plugin(BasePlugin):
@@ -388,9 +417,25 @@ class Plugin(BasePlugin):
             types=(String.getClass(),),
         )
 
-    def _apply_formatting_template(self):
-        self.push_formatting_template(self.get_setting(TEMPLATE_KEY, DEFAULT_TEMPLATE))
-        self.log("Formatting template applied")
+    def push_copy_on_long_press(self, value: bool):
+        self.jvm_plugin.call(
+            "setCopyOnLongPress",
+            value,
+            types=(Boolean.TYPE,),
+        )
+
+    def _apply_saved_settings(self):
+        self.push_formatting_template(
+            self.get_setting(SETTINGS_TEMPLATE_KEY, SETTINGS_DEFAULT_TEMPLATE)
+        )
+
+        self.push_copy_on_long_press(
+            self.get_setting(
+                SETTINGS_COPY_ON_LONG_PRESS_KEY, SETTINGS_DEFAULT_COPY_ON_LONG_PRESS
+            )
+        )
+
+        self.log("Saved settings applied")
 
     def _finalize_jvm_plugin_inject(self):
         self.jvm_plugin.call("finalizeInject")
@@ -409,7 +454,7 @@ class Plugin(BasePlugin):
 
         for stage, action in (
             ("inject", self._inject_jvm_plugin),
-            ("applyTemplate", self._apply_formatting_template),
+            ("applySavedSettings", self._apply_saved_settings),
             ("finalizeInject", self._finalize_jvm_plugin_inject),
         ):
             try:

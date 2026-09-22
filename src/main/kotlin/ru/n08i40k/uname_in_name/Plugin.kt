@@ -3,6 +3,7 @@ package ru.n08i40k.uname_in_name
 import android.webkit.ValueCallback
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
+import ru.n08i40k.uname_in_name.hook.impl.ChatMessageCellHookBundle
 import ru.n08i40k.uname_in_name.hook.impl.UserObjectHookBundle
 import ru.n08i40k.uname_in_name.util.Logger
 import java.lang.reflect.Member
@@ -29,7 +30,7 @@ class Plugin private constructor() {
 
         @JvmStatic
         fun getBuildDate(): String = Instant
-            .fromEpochMilliseconds(BuildConfig.BUILD_TIME.toLong())
+            .fromEpochMilliseconds(BuildConfig.BUILD_TIME)
             .toString()
 
         @JvmStatic
@@ -79,6 +80,11 @@ class Plugin private constructor() {
             INSTANCE?.template = template
         }
 
+        @JvmStatic
+        fun setCopyOnLongPress(value: Boolean) {
+            INSTANCE?.doCopyOnLongPress = value
+        }
+
         @Synchronized
         @JvmStatic
         fun finalizeInject() {
@@ -111,10 +117,12 @@ class Plugin private constructor() {
         }
     }
 
+
     // installed hooks, unhooked on eject
     private val hooks: ArrayList<XC_MethodHook.Unhook> = arrayListOf()
 
     var template: String = "{o} | @{u}"
+    var doCopyOnLongPress: Boolean = true
 
     private fun onInject() {
         Logger.info("Injected!")
@@ -171,6 +179,7 @@ class Plugin private constructor() {
         }
 
         val bundles = listOf(
+            ChatMessageCellHookBundle(),
             UserObjectHookBundle(),
         )
 
